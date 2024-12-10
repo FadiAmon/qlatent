@@ -36,7 +36,7 @@ This library provides the toolset and guidelines to translating validated psycho
 [^6]: Trockel, M., Bohman, B., Lesure, E., Hamidi, M. S., Welle, D., Roberts, L., & Shanafelt, T. (2018). A brief instrument to assess both burnout and professional fulfillment in physicians: reliability and validity, including correlation with self-reported medical errors, in a sample of resident and practicing physicians. Academic Psychiatry, 42(1), 11-24.
 [^7]: Lazarus, R. S., & Folkman, S. (1984). Stress, appraisal, and coping. Springer publishing company.
 
-# The NLP Tasks Currently Supported by the "qlatent" Package
+# The NLP Tasks Currently Supported by the `qlatent` Package
 
 The "qlatent" package supports the following types of NLP tasks:
 - MLM
