@@ -1136,6 +1136,14 @@ To use this code, you need to install the required packages. You can do this by 
 pip install transformers datasets torch numpy
 ```
 
+Install the [qlatent](https://pypi.org/project/qlatent/) package from PyPi: 
+
+```bash
+pip install qlatent
+```
+
+
+
 ## Public Methods
 
 ### train_head
