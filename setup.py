@@ -1,8 +1,9 @@
 from setuptools import setup, find_packages
+from pkg_resources import parse_requirements
 
 setup(
 name="qlatent",
-version="1.0.7",
+version="1.0.24",
 description="A Python package for running psychometric on LLMs.",
 packages=find_packages(
         where=".",

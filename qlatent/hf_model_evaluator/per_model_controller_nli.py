@@ -1,0 +1,196 @@
+import os
+import subprocess
+import sys
+import logging
+import pandas as pd
+from pathlib import Path
+from huggingface_hub import HfApi
+import argparse
+
+
+def get_all_nli_models(only_zero_shot=False):
+    hf_api = HfApi()
+    zero_shot_models = list(hf_api.list_models(filter="zero-shot-classification"))
+    valid_pipeline_tags = ["zero-shot-classification", "text-classification"]
+
+    if only_zero_shot:
+        all_models = zero_shot_models
+    else:
+        text_classification_models = list(hf_api.list_models(filter="text-classification"))
+        all_models = zero_shot_models + text_classification_models
+
+    valid_models = [m for m in all_models if m.pipeline_tag in valid_pipeline_tags]
+    unique_models = {m.modelId: m for m in valid_models}.values()
+    return list(unique_models)
+
+
+def load_models_from_chunk_file(chunk_file_path):
+    with open(chunk_file_path, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+def get_processed_models(base_dir):
+    processed = set()
+
+    asi_file = Path(base_dir) / "QMNLI" / "ASI.csv"
+    if asi_file.exists():
+        try:
+            df = pd.read_csv(asi_file, encoding='utf-8-sig')
+            if 'model_version_id' in df.columns:
+                model_names = {mvid.rsplit('_', 1)[0] for mvid in df['model_version_id'].dropna().unique()}
+                processed.update(model_names)
+                print(f"📋 Found {len(model_names)} processed models in ASI.csv")
+        except Exception as e:
+            logging.warning(f"Could not read ASI file: {e}")
+
+    error_file = Path(base_dir) / "models_errors.csv"
+    if error_file.exists():
+        try:
+            df = pd.read_csv(error_file, encoding='utf-8-sig')
+            if 'model_version_id' in df.columns and 'error' in df.columns:
+                error_model_names = set()
+                for _, row in df.iterrows():
+                    mvid = row['model_version_id']
+                    error = str(row['error']) if pd.notna(row['error']) else ''
+                    if pd.notna(mvid):
+                        if (('Gated repo' in error and '403 Client Error' in error) or
+                                'wrong pipeline tag' in error.lower() or
+                                'Per-model subprocess: Subprocess error (code 1)' in error):
+                            error_model_names.add(mvid)
+                        else:
+                            error_model_names.add(mvid.rsplit('_', 1)[0])
+                processed.update(error_model_names)
+                print(f"⚠️  Found {len(error_model_names)} error models in models_errors.csv")
+        except Exception as e:
+            logging.warning(f"Could not read error file: {e}")
+
+    return processed
+
+
+def process_single_model(model_id, base_dir, timeout=3600):
+    print(f"📊 Evaluating model: {model_id}")
+    try:
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        process = subprocess.Popen(
+            [sys.executable, "single_model_qmnli.py", "--model_id", model_id, "--base_dir", base_dir],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding='utf-8',
+            bufsize=1,
+        )
+
+        output_lines = []
+        model_had_error = False
+
+        for line in iter(process.stdout.readline, ''):
+            line = line.rstrip()
+            if line:
+                output_lines.append(line)
+                if any(kw in line.lower() for kw in [
+                    'evaluating', 'questionnaire', 'accuracy', 'error', 'failed',
+                    'skipping', 'completed', 'loading', '🔄', '✅', '📊', '📝', '✓'
+                ]):
+                    print(f"  {line}")
+                if 'error on' in line.lower() and 'skipping' in line.lower():
+                    model_had_error = True
+
+        return_code = process.wait(timeout=timeout)
+
+        if return_code == 0:
+            if model_had_error:
+                print(f"⚠️  Skipped: {model_id} (model error)")
+            else:
+                print(f"✅ Completed: {model_id}")
+            return True
+        else:
+            error_msg = '\n'.join(output_lines[-10:])
+            print(f"❌ Failed: {model_id}\n   {error_msg}")
+            log_failed_model(model_id, base_dir, f"Subprocess error (code {return_code}): {error_msg}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        print(f"⏰ Timeout: {model_id} (after {timeout}s)")
+        process.kill()
+        log_failed_model(model_id, base_dir, f"Timeout after {timeout} seconds")
+        return False
+
+    except Exception as e:
+        print(f"💥 Error processing {model_id}: {e}")
+        log_failed_model(model_id, base_dir, f"Exception: {str(e)}")
+        return False
+
+
+def log_failed_model(model_id, base_dir, error_message):
+    base_dir = Path(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_log_file = base_dir / "models_errors.csv"
+    new_df = pd.DataFrame([{"model_version_id": model_id, "error": f"Per-model subprocess: {error_message}"}])
+
+    if csv_log_file.is_file():
+        try:
+            df = pd.read_csv(csv_log_file, encoding='utf-8-sig')
+            df = pd.concat([df, new_df], ignore_index=True)
+        except Exception:
+            df = new_df
+    else:
+        df = new_df
+
+    df.to_csv(csv_log_file, index=False, encoding='utf-8-sig')
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Per-model NLI evaluation controller for the psychometric pipeline.")
+    parser.add_argument('--chunk_file', type=str, default=None,
+                        help='Path to a text file with one model ID per line. If omitted, all HuggingFace NLI models are fetched.')
+    parser.add_argument('--base_dir', type=str, default='./model_logs',
+                        help='Directory for output logs (default: ./model_logs)')
+    parser.add_argument('--hf_token', type=str, default=None,
+                        help='HuggingFace API token (optional, reduces rate limiting)')
+    parser.add_argument('--only_zero_shot', action='store_true',
+                        help='Restrict to zero-shot-classification models only')
+    args = parser.parse_args()
+
+    if args.hf_token:
+        os.environ['HF_TOKEN'] = args.hf_token
+        print("🔑 HuggingFace token set")
+
+    Path(args.base_dir).mkdir(parents=True, exist_ok=True)
+    print(f"📁 Output directory: {args.base_dir}")
+    print("Starting NLI pipeline controller")
+
+    if args.chunk_file:
+        print(f"📄 Loading models from: {args.chunk_file}")
+        model_ids = load_models_from_chunk_file(args.chunk_file)
+        processed_models = get_processed_models(args.base_dir)
+        remaining_model_ids = sorted(m for m in model_ids if m not in processed_models)
+        print(f"📊 Total: {len(model_ids)} | Processed: {len(processed_models)} | Remaining: {len(remaining_model_ids)}")
+    else:
+        model_type = "zero-shot only" if args.only_zero_shot else "zero-shot + text-classification"
+        print(f"🔍 Fetching NLI models from HuggingFace ({model_type})...")
+        all_models = get_all_nli_models(only_zero_shot=args.only_zero_shot)
+        processed_models = get_processed_models(args.base_dir)
+        remaining_models = sorted([m for m in all_models if m.id not in processed_models], key=lambda x: x.id)
+        remaining_model_ids = [m.id for m in remaining_models]
+        print(f"📊 Total: {len(all_models)} | Processed: {len(processed_models)} | Remaining: {len(remaining_models)}")
+
+    if not remaining_model_ids:
+        print("🎉 All models have been processed!")
+        return
+
+    successful, failed = 0, 0
+    for i, model_id in enumerate(remaining_model_ids):
+        print(f"\n📈 Progress: {i+1}/{len(remaining_model_ids)} | ✅ {successful} ❌ {failed}")
+        if process_single_model(model_id, args.base_dir):
+            successful += 1
+        else:
+            failed += 1
+
+    print(f"\n🏁 Final Results: ✅ {successful} successful, ❌ {failed} failed")
+
+
+if __name__ == "__main__":
+    main()
