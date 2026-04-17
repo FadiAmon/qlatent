@@ -94,17 +94,6 @@ python per_model_controller_mlm.py --base_dir ./model_logs [--hf_token HF_TOKEN]
 
 ---
 
-### Batch mode (single-process, all models)
-
-Fetches and evaluates all models in a single process. Suitable for small runs or testing.
-
-```bash
-python main_qmnli.py --base_dir ./model_logs
-python main_qmlm.py  --base_dir ./model_logs
-```
-
----
-
 ## Output Structure
 
 Results are written to `--base_dir` (default: `./model_logs`):
@@ -151,7 +140,5 @@ The pipeline is resume-safe. On restart, `per_model_controller_nli.py` reads `QM
 ├── per_model_controller_mlm.py  # MLM orchestrator (subprocess-per-model)
 ├── single_model_qmnli.py        # Single NLI model entry point
 ├── single_model_qmlm.py         # Single MLM model entry point
-├── main_qmnli.py                # Batch NLI entry point
-├── main_qmlm.py                 # Batch MLM entry point
 └── env_qpsychometric_pipeline.yml
 ```

@@ -4,14 +4,14 @@ from typing import List, Literal
 import sys
 import traceback
 
-from utils.file_utils import *
-from utils.logging_utils import LoggingUtils
-from utils.model_utils import ModelUtils
+from qlatent.hf_model_evaluator.utils.file_utils import *
+from qlatent.hf_model_evaluator.utils.logging_utils import LoggingUtils
+from qlatent.hf_model_evaluator.utils.model_utils import ModelUtils
 from qlatent.qmnli.qmnli import *
 from qlatent.qmlm.qmlm import *
 from .questionnaire import *
 from huggingface_hub import HfApi
-from utils.model_acc_evaluator import *
+from qlatent.hf_model_evaluator.utils.model_acc_evaluator import *
 
 file_utils = FileUtils()
 hf_api = HfApi()

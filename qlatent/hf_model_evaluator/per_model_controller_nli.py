@@ -5,7 +5,6 @@ import logging
 import pandas as pd
 from pathlib import Path
 from huggingface_hub import HfApi
-import argparse
 
 
 def get_all_nli_models(only_zero_shot=False):
@@ -73,7 +72,7 @@ def process_single_model(model_id, base_dir, timeout=3600):
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         process = subprocess.Popen(
-            [sys.executable, "single_model_qmnli.py", "--model_id", model_id, "--base_dir", base_dir],
+            [sys.executable, str(Path(__file__).parent / "single_model_qmnli.py"), "--model_id", model_id, "--base_dir", base_dir],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -142,55 +141,3 @@ def log_failed_model(model_id, base_dir, error_message):
     df.to_csv(csv_log_file, index=False, encoding='utf-8-sig')
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Per-model NLI evaluation controller for the psychometric pipeline.")
-    parser.add_argument('--chunk_file', type=str, default=None,
-                        help='Path to a text file with one model ID per line. If omitted, all HuggingFace NLI models are fetched.')
-    parser.add_argument('--base_dir', type=str, default='./model_logs',
-                        help='Directory for output logs (default: ./model_logs)')
-    parser.add_argument('--hf_token', type=str, default=None,
-                        help='HuggingFace API token (optional, reduces rate limiting)')
-    parser.add_argument('--only_zero_shot', action='store_true',
-                        help='Restrict to zero-shot-classification models only')
-    args = parser.parse_args()
-
-    if args.hf_token:
-        os.environ['HF_TOKEN'] = args.hf_token
-        print("🔑 HuggingFace token set")
-
-    Path(args.base_dir).mkdir(parents=True, exist_ok=True)
-    print(f"📁 Output directory: {args.base_dir}")
-    print("Starting NLI pipeline controller")
-
-    if args.chunk_file:
-        print(f"📄 Loading models from: {args.chunk_file}")
-        model_ids = load_models_from_chunk_file(args.chunk_file)
-        processed_models = get_processed_models(args.base_dir)
-        remaining_model_ids = sorted(m for m in model_ids if m not in processed_models)
-        print(f"📊 Total: {len(model_ids)} | Processed: {len(processed_models)} | Remaining: {len(remaining_model_ids)}")
-    else:
-        model_type = "zero-shot only" if args.only_zero_shot else "zero-shot + text-classification"
-        print(f"🔍 Fetching NLI models from HuggingFace ({model_type})...")
-        all_models = get_all_nli_models(only_zero_shot=args.only_zero_shot)
-        processed_models = get_processed_models(args.base_dir)
-        remaining_models = sorted([m for m in all_models if m.id not in processed_models], key=lambda x: x.id)
-        remaining_model_ids = [m.id for m in remaining_models]
-        print(f"📊 Total: {len(all_models)} | Processed: {len(processed_models)} | Remaining: {len(remaining_models)}")
-
-    if not remaining_model_ids:
-        print("🎉 All models have been processed!")
-        return
-
-    successful, failed = 0, 0
-    for i, model_id in enumerate(remaining_model_ids):
-        print(f"\n📈 Progress: {i+1}/{len(remaining_model_ids)} | ✅ {successful} ❌ {failed}")
-        if process_single_model(model_id, args.base_dir):
-            successful += 1
-        else:
-            failed += 1
-
-    print(f"\n🏁 Final Results: ✅ {successful} successful, ❌ {failed} failed")
-
-
-if __name__ == "__main__":
-    main()

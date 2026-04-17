@@ -1,8 +1,8 @@
 import os
 import sys
 import argparse
-from pipeline.pipeline_executor import InitiatePipeline
-from global_variables import *
+from qlatent.hf_model_evaluator.pipeline.pipeline_executor import InitiatePipeline
+from qlatent.hf_model_evaluator.global_variables import *
 from huggingface_hub import HfApi
 from qpsychometric import *
 

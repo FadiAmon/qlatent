@@ -10,7 +10,7 @@ from typing import List, Literal
 from pathlib import Path, PurePosixPath
 import csv
 import pytz
-from global_variables import *
+from qlatent.hf_model_evaluator.global_variables import *
 from .logging_utils import LoggingUtils
 logging_utils = LoggingUtils()
 from huggingface_hub import HfApi
@@ -65,10 +65,13 @@ class FileUtils():
             sys.exit(1)  # Exit the program with a non-zero status to indicate an error
      
             
-    @staticmethod        
+    @staticmethod
     def set_logged_questionnaires_each_model(base_dir):
         model_evaluated_questionnaires = defaultdict(list)
         base_dir = Path(base_dir)
+
+        if not base_dir.exists():
+            return model_evaluated_questionnaires
 
         # List model directories (e.g., 'typeform_distilbert-base-uncased-mnli')
         files_base_dir = os.listdir(base_dir)
@@ -101,6 +104,9 @@ class FileUtils():
     
     def remove_uncompleted_models_evals(questionnaire_num_questions, merge_filtered_positiveonly, base_dir):
         base_dir = Path(base_dir)
+
+        if not base_dir.exists():
+            return
 
         # List model directories (e.g., 'typeform_distilbert-base-uncased-mnli')
         files_base_dir = os.listdir(base_dir)

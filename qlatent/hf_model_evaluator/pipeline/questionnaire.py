@@ -1,8 +1,8 @@
 from qlatent.qmnli.qmnli import *
 from qlatent.qmlm.qmlm import *
 from tqdm import tqdm
-from global_variables import *
-from utils.logging_utils import LoggingUtils
+from qlatent.hf_model_evaluator.global_variables import *
+from qlatent.hf_model_evaluator.utils.logging_utils import LoggingUtils
 logging_utils = LoggingUtils()
 
 

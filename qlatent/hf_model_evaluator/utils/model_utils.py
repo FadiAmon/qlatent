@@ -12,7 +12,7 @@ from transformers import (
 
 from .file_utils import FileUtils
 from .logging_utils import LoggingUtils
-from global_variables import *
+from qlatent.hf_model_evaluator.global_variables import *
 
 logging_utils = LoggingUtils()
 file_utils = FileUtils()
